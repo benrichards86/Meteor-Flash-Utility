@@ -20,6 +20,8 @@ using namespace System;
 using namespace System::IO;
 using namespace System::IO::Ports;
 using namespace System::Threading;
+using namespace System::Reflection;
+using namespace Microsoft::Win32::SafeHandles;
 
 namespace MeteorFlashUtility
 {
@@ -55,6 +57,7 @@ public:
 
 	void Test()
 	{
+		InitializeBSL();
 		Synchronize();
 	}
 
@@ -94,6 +97,9 @@ public:
 					ReportError("Timed out trying to connect!");
 					Connected = false;
 				}
+
+				Object^ stream = Port->GetType()->GetField("internalSerialStream", BindingFlags::NonPublic | BindingFlags::Instance)->GetValue(Port);
+				Handle = (HANDLE)((SafeFileHandle^)(stream->GetType()->GetField("_handle", BindingFlags::NonPublic | BindingFlags::Instance)->GetValue(stream)))->DangerousGetHandle();
 
 				Connected = true;
 			}
@@ -158,6 +164,28 @@ private:
 	{
 		// here we need to toggle the TEST and RST pins
 		// Look at BSL_IO_UART.c in invokeBSL() function for example
+		Console::WriteLine("Initiating Bootstrap Loader");
+		WORD mask = 0x3;
+		WORD latch;
+		CP210x_PRODUCT_STRING productStr;
+		CP210x_SERIAL_STRING serialNum;
+		Byte length;
+		if (!CP210xRT_GetDeviceProductString(Handle, productStr, &length) == CP210x_SUCCESS)
+		{
+			ReportError("Error accessing Meteor! Could not read product string of USB controller!");
+			return;
+		}
+		if (!CP210xRT_GetDeviceSerialNumber(Handle, serialNum, &length) == CP210x_SUCCESS)
+		{
+			ReportError("Error accessing Meteor! Could not read serial number of USB controller!");
+			return;
+		}
+
+		printf("Found device: %s [Serial: %s]\n", productStr, serialNum);
+
+		Console::WriteLine("TODO: Toggle pins to initiate");
+
+		exit(0);
 	}
 
 	// Performs the device Synchronization sequence. Must be done first before every command.
@@ -363,6 +391,7 @@ private:
 	SerialPort^ Port;
 	bool Connected = false;
 	bool Initialized = false;
+	HANDLE Handle;
 
 private:
 	static const unsigned char DATA_SYNC = 0x80;
