@@ -23,6 +23,24 @@ using namespace System::Threading;
 using namespace System::Reflection;
 using namespace Microsoft::Win32::SafeHandles;
 
+// Macro to set RST pin
+#define SetRSTPin(_handle, _comdcb, _level) \
+	(_comdcb).fDtrControl = (_level) ? DTR_CONTROL_ENABLE : DTR_CONTROL_DISABLE; \
+	SetCommState(_handle, &(_comdcb));
+
+// Macro to set TEST pin
+#define SetTESTPin(_handle, _comdcb, _level) \
+	(_comdcb).fRtsControl = (_level) ? RTS_CONTROL_DISABLE : RTS_CONTROL_ENABLE; \
+	SetCommState((_handle), &(_comdcb));
+
+// Macro to change baud rate of com port
+#define ChangeCommBaudRate(_handle, _comdcb, _rate) \
+	GetCommState((_handle), &(_comdcb)); \
+	(_comdcb).BaudRate = (_rate); \
+	SetCommState((_handle), &(_comdcb));
+
+
+
 namespace MeteorFlashUtility
 {
 
@@ -40,7 +58,7 @@ public:
 		Parity = Parity::Even;
 		StopBits = StopBits::One;
 		DataBits = 8;
-		Handshake = Handshake::None;
+		Handshake = Handshake::RequestToSend;
 		ReadTimeout = 1000;
 		WriteTimeout = 1000;
 		Port = gcnew SerialPort();
@@ -53,12 +71,6 @@ public:
 	{
 		if (Connected)
 			Port->Close();
-	}
-
-	void Test()
-	{
-		InitializeBSL();
-		Synchronize();
 	}
 
 	// Attempts to connect to the named port
@@ -101,6 +113,8 @@ public:
 				Object^ stream = Port->GetType()->GetField("internalSerialStream", BindingFlags::NonPublic | BindingFlags::Instance)->GetValue(Port);
 				Handle = (HANDLE)((SafeFileHandle^)(stream->GetType()->GetField("_handle", BindingFlags::NonPublic | BindingFlags::Instance)->GetValue(stream)))->DangerousGetHandle();
 
+				InitializeBSL();
+
 				Connected = true;
 			}
 		}
@@ -111,8 +125,8 @@ public:
 	// Executes the Transmit BSL Version command. Unprotected command.
 	bool TransmitBSLVersion(array<unsigned char> ^ &ResponseData)
 	{
-		bool success = true;
 		Synchronize();
+		bool success = true;
 		Message[0] = DATA_HEADER;
 		Message[1] = CMD_TX_VERSION;
 		Message[2] = 0x04;
@@ -165,8 +179,6 @@ private:
 		// here we need to toggle the TEST and RST pins
 		// Look at BSL_IO_UART.c in invokeBSL() function for example
 		Console::WriteLine("Initiating Bootstrap Loader");
-		WORD mask = 0x3;
-		WORD latch;
 		CP210x_PRODUCT_STRING productStr;
 		CP210x_SERIAL_STRING serialNum;
 		Byte length;
@@ -183,9 +195,42 @@ private:
 
 		printf("Found device: %s [Serial: %s]\n", productStr, serialNum);
 
-		Console::WriteLine("TODO: Toggle pins to initiate");
+		printf("Initializing.");
 
-		exit(0);
+		DCB ComDCB;
+		SetRSTPin(Handle, ComDCB, 0);
+		SetTESTPin(Handle, ComDCB, 0);
+		Thread::CurrentThread->Sleep(250);
+		printf(".");
+
+		SetRSTPin(Handle, ComDCB, 0);
+		SetTESTPin(Handle, ComDCB, 0);
+		Thread::CurrentThread->Sleep(10);
+		printf(".");
+		SetTESTPin(Handle, ComDCB, 1);
+		Thread::CurrentThread->Sleep(10);
+		printf(".");
+		SetTESTPin(Handle, ComDCB, 0);
+		Thread::CurrentThread->Sleep(10);
+		printf(".");
+		SetTESTPin(Handle, ComDCB, 1);
+		Thread::CurrentThread->Sleep(10);
+		printf(".");
+		SetTESTPin(Handle, ComDCB, 0);
+		Thread::CurrentThread->Sleep(10);
+		printf(".");
+		SetRSTPin(Handle, ComDCB, 1);
+		Thread::CurrentThread->Sleep(10);
+		printf(".");
+
+		Thread::CurrentThread->Sleep(350);
+		printf(".");
+		PurgeComm(Handle, PURGE_TXCLEAR);
+		PurgeComm(Handle, PURGE_RXCLEAR);
+		ChangeCommBaudRate(Handle, ComDCB, 9601);
+		ChangeCommBaudRate(Handle, ComDCB, 9600);
+		Thread::CurrentThread->Sleep(350);
+		printf(". Done!\n");
 	}
 
 	// Performs the device Synchronization sequence. Must be done first before every command.
@@ -391,7 +436,7 @@ private:
 	SerialPort^ Port;
 	bool Connected = false;
 	bool Initialized = false;
-	HANDLE Handle;
+	HANDLE Handle;  // raw file handle to com port
 
 private:
 	static const unsigned char DATA_SYNC = 0x80;

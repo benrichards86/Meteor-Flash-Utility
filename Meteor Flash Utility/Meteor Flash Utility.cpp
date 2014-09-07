@@ -62,9 +62,7 @@ int _tmain(int argc, _TCHAR* argv[])
 		}
 	}
 
-	flasher->Test();
-
-#if 0
+#if 1
 	// Here, issue a the version check command
 	array<unsigned char> ^ VersionBytes;
 	if (!flasher->TransmitBSLVersion(VersionBytes))
