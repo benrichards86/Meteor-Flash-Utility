@@ -1,4 +1,4 @@
-Meteor-Flash-Utility
+Meteor Flash Utility
 ====================
 
 A tool that will allow access to dump and reflash the firmware of the Kreyos Meteor smartwatch using the USB cradle.
